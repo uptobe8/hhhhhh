@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tartazo entre amigas</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#ffd2ec;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:#24172f}
+#load{position:fixed;inset:0;display:grid;place-items:center;text-align:center;background:linear-gradient(135deg,#ffefd7,#ffc4e4);font-weight:900;z-index:9999}
+#load div{background:#fff;border:4px solid #24172f;box-shadow:8px 8px 0 #24172f;padding:22px;margin:20px}
+</style>
+</head>
+<body>
+<div id="load"><div>Cargando juego...</div></div>
+<script>
+const GAME_FILE = './Tarta%20Attack.html?v=' + Date.now();
+
+const AUDIO_FIX = `
+  let bgmAudio = null;
+  let bgmUrl = null;
+
+  function makeWavUrl(kind='music'){
+    const sr = 8000;
+    const notes = kind === 'sfx' ? [880,520] : [523,659,784,1046,784,659,587,880];
+    const dur = kind === 'sfx' ? 0.09 : 0.18;
+    const gap = kind === 'sfx' ? 0.01 : 0.03;
+    const samples = [];
+    notes.forEach(freq => {
+      const n = Math.floor(sr * dur);
+      for(let i=0;i<n;i++){
+        const t = i / sr;
+        const wave = Math.sin(2*Math.PI*freq*t) + .35*Math.sin(2*Math.PI*freq*2*t);
+        const env = Math.min(1, i/(sr*.015), (n-i)/(sr*.035));
+        samples.push(Math.max(-1, Math.min(1, wave * env * .55)));
+      }
+      for(let i=0;i<Math.floor(sr*gap);i++) samples.push(0);
+    });
+    const dataLen = samples.length * 2;
+    const buffer = new ArrayBuffer(44 + dataLen);
+    const view = new DataView(buffer);
+    function str(o,s){ for(let i=0;i<s.length;i++) view.setUint8(o+i,s.charCodeAt(i)); }
+    str(0,'RIFF'); view.setUint32(4,36+dataLen,true); str(8,'WAVE'); str(12,'fmt ');
+    view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
+    view.setUint32(24,sr,true); view.setUint32(28,sr*2,true); view.setUint16(32,2,true); view.setUint16(34,16,true);
+    str(36,'data'); view.setUint32(40,dataLen,true);
+    let p = 44;
+    samples.forEach(v => { view.setInt16(p, v*32767, true); p += 2; });
+    return URL.createObjectURL(new Blob([buffer], {type:'audio/wav'}));
+  }
+
+  function ensureBgm(){
+    if(!bgmUrl) bgmUrl = makeWavUrl('music');
+    if(!bgmAudio){
+      bgmAudio = new Audio(bgmUrl);
+      bgmAudio.loop = true;
+      bgmAudio.volume = .9;
+      bgmAudio.preload = 'auto';
+      bgmAudio.playsInline = true;
+    }
+    return bgmAudio;
+  }
+
+  function unlockAudio(){
+    if(muted) return null;
+    ensureBgm();
+    const AudioEngine = window.AudioContext || window.webkitAudioContext;
+    if(AudioEngine){
+      if(!audioCtx) audioCtx = new AudioEngine();
+      if(audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+    }
+    return audioCtx;
+  }
+
+  function audio(){
+    return unlockAudio();
+  }
+`;
+
+const SFX_FIX = `  function sfx(type){
+    if(muted) return;
+    try{
+      const a = new Audio(makeWavUrl('sfx'));
+      a.volume = type === 'splat' ? 1 : .7;
+      a.playsInline = true;
+      a.play().catch(()=>{});
+    }catch(e){}
+  }
+`;
+
+const MUSIC_FIX = `  function startMusic(){
+    if(muted || state !== 'game' || musicTimer) return;
+    unlockAudio();
+    const m = ensureBgm();
+    m.currentTime = 0;
+    m.play().then(()=>{
+      musicBtn.textContent = 'Música ON';
+      musicTimer = setInterval(()=>{},1000);
+    }).catch(()=>{
+      musicBtn.textContent = 'Toca Música ON';
+    });
+  }
+
+  function stopMusic(){
+    if(bgmAudio){ bgmAudio.pause(); bgmAudio.currentTime = 0; }
+    if(musicTimer){ clearInterval(musicTimer); musicTimer=null; }
+  }
+`;
+
+function patch(html){
+  html = html.replace(/<p class="small">[\s\S]*?<\/p>/, '<p class="small">Versión online actualizada con audio real HTML.</p>');
+  html = html.replace(/  function audio\(\)\{[\s\S]*?  function sfx\(type\)\{[\s\S]*?  function startMusic\(\)\{/, AUDIO_FIX + '\n' + SFX_FIX + '\n  function startMusic(){');
+  html = html.replace(/  function startMusic\(\)\{[\s\S]*?  function loop\(t\)\{/, MUSIC_FIX + '\n  function loop(t){');
+  html = html.replace("document.getElementById('playBtn').onclick = () => { show(select); };", "document.getElementById('playBtn').onclick = () => { muted=false; unlockAudio(); sfx('throw'); show(select); };");
+  html = html.replace("document.getElementById('startBtn').onclick = () => startGame();", "document.getElementById('startBtn').onclick = () => { muted=false; unlockAudio(); startGame(); };");
+  html = html.replace("if(muted) stopMusic(); else startMusic();", "if(muted) stopMusic(); else { unlockAudio(); sfx('throw'); startMusic(); }");
+  html = html.replace("  setupButtons();", "  ['pointerdown','touchstart','click'].forEach(evt => document.addEventListener(evt, () => { if(!muted) unlockAudio(); }, {passive:true}));\n\n  setupButtons();");
+  return html;
+}
+
+fetch(GAME_FILE,{cache:'no-store'})
+  .then(r => r.ok ? r.text() : Promise.reject(r.status))
+  .then(html => {
+    const patched = patch(html);
+    document.open();
+    document.write(patched);
+    document.close();
+  })
+  .catch(() => {
+    document.getElementById('load').innerHTML = '<div>No se ha podido cargar Tarta Attack.html.<br>Abre <a href="./Tarta%20Attack.html">este enlace directo</a>.</div>';
+  });
+</script>
+</body>
+</html>
