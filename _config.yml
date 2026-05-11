@@ -1,8 +1,0 @@
-theme: minima
-plugins:
-  - jekyll-feed
-
-# GitHub Pages / Jekyll configuration
-# Reference: https://docs.github.com/es/pages/setting-up-a-github-pages-site-with-jekyll/adding-a-theme-to-your-github-pages-site-using-jekyll
-title: App Peluquería
-description: Gestión de citas e inventario para peluquería
