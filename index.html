@@ -6,128 +6,79 @@
 <title>Tartazo entre amigas</title>
 <style>
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#ffd2ec;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:#24172f}
-#load{position:fixed;inset:0;display:grid;place-items:center;text-align:center;background:linear-gradient(135deg,#ffefd7,#ffc4e4);font-weight:900;z-index:9999}
-#load div{background:#fff;border:4px solid #24172f;box-shadow:8px 8px 0 #24172f;padding:22px;margin:20px}
+iframe{position:fixed;inset:0;width:100vw;height:100dvh;border:0;background:#ffd2ec}
+#tapSound{position:fixed;inset:0;z-index:9999;display:none;place-items:center;text-align:center;background:linear-gradient(135deg,rgba(255,239,215,.96),rgba(255,196,228,.96));padding:18px}
+#tapSound.show{display:grid}
+#tapSound .box{background:#fff;border:5px solid #24172f;box-shadow:10px 10px 0 #24172f;padding:22px;max-width:380px;font-weight:900}
+#tapSound h1{font-size:34px;line-height:.92;margin:0 0 12px;letter-spacing:-.05em}
+#tapSound button{border:3px solid #24172f;background:#ff3d82;color:#fff;padding:14px 18px;font-weight:1000;box-shadow:5px 5px 0 #24172f;cursor:pointer;text-transform:uppercase}
+#tapSound p{font-size:14px;line-height:1.3;margin:10px 0 0}
 </style>
 </head>
 <body>
-<div id="load"><div>Cargando juego...</div></div>
+<iframe id="game" title="Tartazo entre amigas" allow="autoplay; fullscreen"></iframe>
+<div id="tapSound">
+  <div class="box">
+    <h1>Tartazo<br>entre amigas</h1>
+    <button id="soundBtn">Entrar con música</button>
+    <p>En móvil hace falta este toque para que el sonido arranque.</p>
+  </div>
+</div>
 <script>
-const GAME_FILE = './Tarta%20Attack.html?v=' + Date.now();
+const game = document.getElementById('game');
+const overlay = document.getElementById('tapSound');
+const btn = document.getElementById('soundBtn');
+const isMobile = matchMedia('(hover:none), (pointer:coarse)').matches;
+let ctx = null;
+let musicTimer = null;
+let started = false;
 
-const AUDIO_FIX = `
-  let bgmAudio = null;
-  let bgmUrl = null;
-
-  function makeWavUrl(kind='music'){
-    const sr = 8000;
-    const notes = kind === 'sfx' ? [880,520] : [523,659,784,1046,784,659,587,880];
-    const dur = kind === 'sfx' ? 0.09 : 0.18;
-    const gap = kind === 'sfx' ? 0.01 : 0.03;
-    const samples = [];
-    notes.forEach(freq => {
-      const n = Math.floor(sr * dur);
-      for(let i=0;i<n;i++){
-        const t = i / sr;
-        const wave = Math.sin(2*Math.PI*freq*t) + .35*Math.sin(2*Math.PI*freq*2*t);
-        const env = Math.min(1, i/(sr*.015), (n-i)/(sr*.035));
-        samples.push(Math.max(-1, Math.min(1, wave * env * .55)));
-      }
-      for(let i=0;i<Math.floor(sr*gap);i++) samples.push(0);
-    });
-    const dataLen = samples.length * 2;
-    const buffer = new ArrayBuffer(44 + dataLen);
-    const view = new DataView(buffer);
-    function str(o,s){ for(let i=0;i<s.length;i++) view.setUint8(o+i,s.charCodeAt(i)); }
-    str(0,'RIFF'); view.setUint32(4,36+dataLen,true); str(8,'WAVE'); str(12,'fmt ');
-    view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
-    view.setUint32(24,sr,true); view.setUint32(28,sr*2,true); view.setUint16(32,2,true); view.setUint16(34,16,true);
-    str(36,'data'); view.setUint32(40,dataLen,true);
-    let p = 44;
-    samples.forEach(v => { view.setInt16(p, v*32767, true); p += 2; });
-    return URL.createObjectURL(new Blob([buffer], {type:'audio/wav'}));
-  }
-
-  function ensureBgm(){
-    if(!bgmUrl) bgmUrl = makeWavUrl('music');
-    if(!bgmAudio){
-      bgmAudio = new Audio(bgmUrl);
-      bgmAudio.loop = true;
-      bgmAudio.volume = .9;
-      bgmAudio.preload = 'auto';
-      bgmAudio.playsInline = true;
-    }
-    return bgmAudio;
-  }
-
-  function unlockAudio(){
-    if(muted) return null;
-    ensureBgm();
-    const AudioEngine = window.AudioContext || window.webkitAudioContext;
-    if(AudioEngine){
-      if(!audioCtx) audioCtx = new AudioEngine();
-      if(audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
-    }
-    return audioCtx;
-  }
-
-  function audio(){
-    return unlockAudio();
-  }
-`;
-
-const SFX_FIX = `  function sfx(type){
-    if(muted) return;
-    try{
-      const a = new Audio(makeWavUrl('sfx'));
-      a.volume = type === 'splat' ? 1 : .7;
-      a.playsInline = true;
-      a.play().catch(()=>{});
-    }catch(e){}
-  }
-`;
-
-const MUSIC_FIX = `  function startMusic(){
-    if(muted || state !== 'game' || musicTimer) return;
-    unlockAudio();
-    const m = ensureBgm();
-    m.currentTime = 0;
-    m.play().then(()=>{
-      musicBtn.textContent = 'Música ON';
-      musicTimer = setInterval(()=>{},1000);
-    }).catch(()=>{
-      musicBtn.textContent = 'Toca Música ON';
-    });
-  }
-
-  function stopMusic(){
-    if(bgmAudio){ bgmAudio.pause(); bgmAudio.currentTime = 0; }
-    if(musicTimer){ clearInterval(musicTimer); musicTimer=null; }
-  }
-`;
-
-function patch(html){
-  html = html.replace(/<p class="small">[\s\S]*?<\/p>/, '<p class="small">Versión online actualizada con audio real HTML.</p>');
-  html = html.replace(/  function audio\(\)\{[\s\S]*?  function sfx\(type\)\{[\s\S]*?  function startMusic\(\)\{/, AUDIO_FIX + '\n' + SFX_FIX + '\n  function startMusic(){');
-  html = html.replace(/  function startMusic\(\)\{[\s\S]*?  function loop\(t\)\{/, MUSIC_FIX + '\n  function loop(t){');
-  html = html.replace("document.getElementById('playBtn').onclick = () => { show(select); };", "document.getElementById('playBtn').onclick = () => { muted=false; unlockAudio(); sfx('throw'); show(select); };");
-  html = html.replace("document.getElementById('startBtn').onclick = () => startGame();", "document.getElementById('startBtn').onclick = () => { muted=false; unlockAudio(); startGame(); };");
-  html = html.replace("if(muted) stopMusic(); else startMusic();", "if(muted) stopMusic(); else { unlockAudio(); sfx('throw'); startMusic(); }");
-  html = html.replace("  setupButtons();", "  ['pointerdown','touchstart','click'].forEach(evt => document.addEventListener(evt, () => { if(!muted) unlockAudio(); }, {passive:true}));\n\n  setupButtons();");
-  return html;
+function loadGame(){
+  game.src = './Tarta%20Attack.html?v=' + Date.now();
 }
 
-fetch(GAME_FILE,{cache:'no-store'})
-  .then(r => r.ok ? r.text() : Promise.reject(r.status))
-  .then(html => {
-    const patched = patch(html);
-    document.open();
-    document.write(patched);
-    document.close();
-  })
-  .catch(() => {
-    document.getElementById('load').innerHTML = '<div>No se ha podido cargar Tarta Attack.html.<br>Abre <a href="./Tarta%20Attack.html">este enlace directo</a>.</div>';
-  });
+function tone(freq, dur, vol){
+  if(!ctx) return;
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = 'square';
+  o.frequency.value = freq;
+  o.connect(g); g.connect(ctx.destination);
+  const now = ctx.currentTime;
+  g.gain.setValueAtTime(vol, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  o.start(now); o.stop(now + dur + .02);
+}
+
+function startParentMusic(){
+  if(started) return;
+  started = true;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if(!AC) return;
+  ctx = new AC();
+  if(ctx.state === 'suspended') ctx.resume().catch(()=>{});
+  tone(880,.10,.08);
+  const notes = [262,330,392,523,392,330,294,440];
+  let i = 0;
+  musicTimer = setInterval(()=>{
+    if(!ctx || ctx.state !== 'running') return;
+    tone(notes[i++ % notes.length], .18, .035);
+  },210);
+}
+
+function enter(){
+  startParentMusic();
+  overlay.classList.remove('show');
+  game.focus();
+}
+
+btn.addEventListener('pointerdown', enter, {passive:true});
+btn.addEventListener('click', enter);
+
+loadGame();
+if(isMobile){
+  overlay.classList.add('show');
+}
 </script>
 </body>
 </html>
