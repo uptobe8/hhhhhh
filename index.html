@@ -6,18 +6,14 @@
 <title>Tartazo entre amigas</title>
 <style>
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#ffd2ec;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:#24172f}
-#frame{width:100vw;height:100dvh;border:0;display:block;background:#ffd2ec}
-#load{position:fixed;inset:0;display:grid;place-items:center;text-align:center;background:linear-gradient(135deg,#ffefd7,#ffc4e4);font-weight:900;z-index:3}
+#load{position:fixed;inset:0;display:grid;place-items:center;text-align:center;background:linear-gradient(135deg,#ffefd7,#ffc4e4);font-weight:900;z-index:9999}
 #load div{background:#fff;border:4px solid #24172f;box-shadow:8px 8px 0 #24172f;padding:22px;margin:20px}
 </style>
 </head>
 <body>
 <div id="load"><div>Cargando juego...</div></div>
-<iframe id="frame" allow="autoplay; fullscreen"></iframe>
 <script>
 const GAME_FILE = './Tarta%20Attack.html?v=' + Date.now();
-const iframe = document.getElementById('frame');
-const loader = document.getElementById('load');
 
 const AUDIO_FIX = `
   function unlockAudio(){
@@ -60,10 +56,11 @@ const MUSIC_FIX = `  function startMusic(){
         o.frequency.value = notes[i++ % notes.length];
         o.connect(g); g.connect(ac.destination);
         const now = ac.currentTime;
-        g.gain.setValueAtTime(.035,now);
+        g.gain.setValueAtTime(.05,now);
         g.gain.exponentialRampToValueAtTime(.001,now+.18);
         o.start(now); o.stop(now+.2);
       },210);
+      try { sfx('throw'); } catch(e) {}
     };
     if(ac.state === 'running') begin();
     else ac.resume().then(begin).catch(()=>{ musicBtn.textContent = 'Toca Música ON'; });
@@ -72,7 +69,7 @@ const MUSIC_FIX = `  function startMusic(){
   function stopMusic(){`;
 
 function patch(html){
-  html = html.replace(/<p class="small">[\s\S]*?<\/p>/, '<p class="small">Versión online actualizada.</p>');
+  html = html.replace(/<p class="small">[\s\S]*?<\/p>/, '<p class="small">Versión online actualizada con audio móvil.</p>');
   html = html.replace(/  function audio\(\)\{[\s\S]*?  function sfx\(type\)\{/, AUDIO_FIX + '\n  function sfx(type){');
   html = html.replace(/  function startMusic\(\)\{[\s\S]*?  function stopMusic\(\)\{/, MUSIC_FIX);
   html = html.replace("document.getElementById('startBtn').onclick = () => startGame();", "document.getElementById('startBtn').onclick = () => { unlockAudio(); startGame(); };");
@@ -84,11 +81,13 @@ function patch(html){
 fetch(GAME_FILE,{cache:'no-store'})
   .then(r => r.ok ? r.text() : Promise.reject(r.status))
   .then(html => {
-    iframe.srcdoc = patch(html);
-    loader.style.display = 'none';
+    const patched = patch(html);
+    document.open();
+    document.write(patched);
+    document.close();
   })
-  .catch(err => {
-    loader.innerHTML = '<div>No se ha podido cargar Tarta Attack.html.<br>Abre <a href="./Tarta%20Attack.html">este enlace directo</a>.</div>';
+  .catch(() => {
+    document.getElementById('load').innerHTML = '<div>No se ha podido cargar Tarta Attack.html.<br>Abre <a href="./Tarta%20Attack.html">este enlace directo</a>.</div>';
   });
 </script>
 </body>
